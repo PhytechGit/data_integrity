@@ -64,10 +64,10 @@ yesterday = (dt.date.today() - dt.timedelta(days=1)).strftime("%Y-%m-%d")
 start_date = (dt.date.today() - dt.timedelta(days=8)).strftime("%Y-%m-%d")
 failed_list = []
 
-projects_list = get_projects(start_date)
-print(projects_list)
-for p_id in projects_list['project_id'][:50]:
-    if p_id != 849305:
+#projects_list = get_projects(start_date)
+#print(projects_list)
+for p_id in [851863]: #projects_list['project_id'][:50]:
+    if p_id != 851863:
         continue
     try:
         project_data = functions.load_project_data(project_id=p_id, min_date=start_date,

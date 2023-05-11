@@ -228,6 +228,13 @@ class Project:
             mdf.dropna(how='any', inplace=True)
             mdf['sm_diff'] = mdf['sm_val'].diff()
             self.multi_depths_sm.update({d: mdf})
+    
+    def SM_statistics_by_probe(self):
+        SM_statistics = {}
+        for d in self.multi_depths_sm.keys():
+            SM_statistics[d] = {'mean': self.multi_depths_sm[d]['sm_val'].mean(),
+                                'std': self.multi_depths_sm[d]['sm_val'].std()}
+        self.SM_statistics = SM_statistics
 
     def find_sm_anomalies(self, debug=False):
         pass
@@ -316,6 +323,23 @@ class Project:
             AND start_date >= CAST((CAST('{self.min_date}' AS timestamp)) AS date)
             AND start_date <= CAST((CAST('{self.max_date}' AS timestamp)) AS date)
         """
+        query = f"""
+            SELECT pis.project_id, amount, start_ts, end_ts, psi, start_date, 
+            timezone('{self.timezone}', to_timestamp(start_ts / 1000)) start_lt,
+            timezone('{self.timezone}', to_timestamp(end_ts / 1000)) end_lt,
+            irrigation_system_type system_type
+            FROM {DB_TABLES['project_irrigation_spans']} pis
+            JOIN  {DB_TABLES['projects_hierachy']} ph
+            ON pis.project_id = ph.project_id
+            WHERE ((pis.project_id = {self.project_id}) OR 
+                    (pis.project_id = (SELECT project_id from projects_hierachy
+                    WHERE  main_project_const_id = (SELECT main_project_const_id FROM projects_hierachy WHERE project_id = {self.project_id})
+                    AND season = 2023
+                    AND project_id <> {self.project_id})))
+            AND start_date >= CAST((CAST('{self.min_date}' AS timestamp)) AS date)
+            AND start_date <= CAST((CAST('{self.max_date}' AS timestamp)) AS date)
+            ORDER BY start_date
+        """
         if self.debug:
             print(query)
 
@@ -331,7 +355,7 @@ class Project:
             min_sm_val = self.df_sm_data_raw.groupby('depth_cm').sm_val.min()[depth]
             self.local_saturation_by_depth.append((depth,max_sm_val)) 
             if max_sm_val < self.min_sm_saturation:
-                self.flag += f"|probe_depth_{depth}_not_responding"
+                self.flag += f"|probe_depth_{depth}_not_responding_local_saturation"
             
     def get_sensor_support_status(self):
         query = f"""

@@ -13,7 +13,8 @@ DB_TABLES = {
     'weather_area_calcs': 'WEATHER_AREA_CALCS',
     'rl': 'project_refill_line',
     'results_table': 'project_soil_prediction',
-    'project_irrigation_spans': 'project_irrigation_spans_v2'
+    'project_irrigation_spans': 'project_irrigation_spans_v2',
+    'projects_hierachy': 'projects_hierachy'
 }
 
 ALLOWED_SM_TYPES  = (90, 91, 92, 98, 117, 118, 124, 127, 135, 137,)
