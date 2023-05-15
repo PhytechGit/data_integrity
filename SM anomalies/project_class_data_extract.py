@@ -233,7 +233,9 @@ class Project:
         SM_statistics = {}
         for d in self.multi_depths_sm.keys():
             SM_statistics[d] = {'mean': self.multi_depths_sm[d]['sm_val'].mean(),
-                                'std': self.multi_depths_sm[d]['sm_val'].std()}
+                                'std': self.multi_depths_sm[d]['sm_val'].std(),
+                               'max': self.multi_depths_sm[d]['sm_val'].max(),
+                               'min': self.multi_depths_sm[d]['sm_val'].min()}
         self.SM_statistics = SM_statistics
 
     def find_sm_anomalies(self, debug=False):
