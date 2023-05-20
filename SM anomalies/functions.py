@@ -19,6 +19,7 @@ def not_responding_logic(df_irr_span, probe_dict, event_timestamp, project_remar
     #################################
     if ((min(df_irr_span_short.sm_val) > probeMaxSM - 0.5) and
                 ((max(df_irr_span_short.sm_diff) > sm_hourly_diff*logic_parameters.LOW_RESPONSE_FACTOR))):
+        #TODO add time from previous irrigation event to address local saturation
         project_remarks.add(f"{current_event_start}: probe {probe_depth} Local saturation, start point:{min(df_irr_span_short.sm_val)} max:{probeMaxSM}")
         return(probe_dict) # Do Not count as not_responding event
             
@@ -77,7 +78,6 @@ def find_not_responding_events(project_data, debug=False):
                 probe_dict = {'not_responding': False,
                               'low_reponse': False,
                               'late_response': False,
-                              #'irrigation_events': len(df_irr),
                               'events dates': [],
                               'probe_SM_diff': 0
                              }
@@ -97,19 +97,19 @@ def find_not_responding_events(project_data, debug=False):
                 df_irr_span = df[(df.local_time >= current_event_start - pd.Timedelta(hours=1)) 
                                  & (df.local_time < current_event_end + pd.Timedelta(hours=logic_parameters.IRR_SPAN_END_AFTER_X_HOURS))
                                 ]
-                df_irr_wide_span = df[(df.local_time >= current_event_start - pd.Timedelta(hours=1)) 
+                df_irr_wide_span = df[(df.local_time >= current_event_start - pd.Timedelta(hours=2)) 
                                  & (df.local_time < current_event_end + pd.Timedelta(hours=3* logic_parameters.IRR_SPAN_END_AFTER_X_HOURS))
                                 ].reset_index(drop=True)
                 
                 sm_hourly_diff = logic_parameters.SM_HOURLY_DIFF_FIRST_DEPTH if probe_depth_index==0 else logic_parameters.SM_HOURLY_DIFF_SECOND_DEPTH
                 ProbeMinSM, ProbeMaxSM = min(df_irr_wide_span.sm_val), max(df_irr_wide_span.sm_val)
                 probeMaxDiff = ProbeMaxSM - ProbeMinSM
-                probeMaxSM = project_data.SM_statistics[probe_depth]['max']
+                #probeMaxSM = project_data.SM_statistics[probe_depth]['max']
                 
                 if debug:
-                    print(df_irr_wide_span)
+                    print(df_irr_wide_span, 'probeMaxSM: ',ProbeMaxSM)
                 
-                probe_dict = not_responding_logic(df_irr_wide_span, probe_dict, event_timestamp, project_remarks, sm_hourly_diff, probe_depth, current_event_start, current_event_end, probeMaxDiff,probeMaxSM)
+                probe_dict = not_responding_logic(df_irr_wide_span, probe_dict, event_timestamp, project_remarks, sm_hourly_diff, probe_depth, current_event_start, current_event_end, probeMaxDiff, ProbeMaxSM)
                   
                 #probe_dict['irrigation_events'] = len(df_irr)
                 #probe_dict['events dates'] = probe_events_list
@@ -164,6 +164,7 @@ def get_project_results(project_data, debug=False):
                          'area_id' : project_data.area_id,
                          'area_name' : project_data.area_name,
                          'company_name' : project_data.company,
+                         'territory' : project_data.territory,
                          'crop_name' : project_data.crop_name,
                          'variety_id' : project_data.variety_id,
                          'probe_depths': project_results.get('probe_depths'),
@@ -331,3 +332,13 @@ def find_not_responding_events_old(project_data, debug=False):
                                                            'event_timestamp': event_timestamp,
                                                            'events_details': probe_events_dict})
     return (not_responding_SM_sensors_project_dict)
+
+#############
+# define filtering logic for selecting faulty sensors
+#
+#
+def find_projects_with_faulty_sensors(df):
+    failed_sensors_list = []
+    filtered_df = df[(df['percent_not responding'] > 0.9) & (df.max_SM_diff < 0.5)]
+    failed_sensors_list = list(filtered_df.sensor_id.values)
+    return(failed_sensors_list)

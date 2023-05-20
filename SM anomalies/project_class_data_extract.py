@@ -111,7 +111,12 @@ class Project:
             self.valid_project = False
             self.flag += 'no metadata found'
             return
-        
+
+        self.timezone = self.project_metadata.time_zone.iloc[0]
+        self.load_project_metadata_from_ruby()
+        self.infer_project_metadata()
+
+    def load_project_metadata_from_ruby(self):
         query = f"""
             SELECT latitude
             FROM {DB_TABLES['phytoweb_projects_s']}
@@ -128,11 +133,31 @@ class Project:
         else:
             lat = None
         self.project_metadata['latitude'] = lat
+        
+        query = f"""
+            select t.code territory
+            from projects pr
+            join public.territory_entities te
+            on pr.plot_id = te.territoriable_id
+            join public.territories t
+            on te.territory_id = t.id
+            where territoriable_type = 'Plot'
+            and pr.id = {self.project_id}
+            and t.code <> 'usa'
+        """
+        
+        if self.debug:
+            print(query)
 
-        self.timezone = self.project_metadata.time_zone.iloc[0]
-        self.infer_project_metadata()
-
-
+        sql_importer.query = query
+        sql_importer.execute_query()
+        
+        if sql_importer.res:
+            terr = sql_importer.res[0][0]
+        else:
+            terr = None
+        self.project_metadata['territory'] = terr
+        
     def infer_project_metadata(self):
         self.timezone = self.project_metadata.time_zone.unique()[0]
         self.crop_name = self.project_metadata.crop_type.unique()[0].lower()
@@ -143,6 +168,7 @@ class Project:
         self.plot_name = self.project_metadata.plot_name.unique()[0]
         self.area_name = self.project_metadata.area_name.unique()[0]
         self.project_name = self.project_metadata.name.unique()[0]
+        self.territory = self.project_metadata.territory.unique()[0]
         self.latitude = self.project_metadata.latitude.unique()[0]
 
         project_link = 'https://app.phytech.com/%d/%d/%d' %(self.area_id, self.plot_id, self.project_id)
@@ -232,10 +258,12 @@ class Project:
     def SM_statistics_by_probe(self):
         SM_statistics = {}
         for d in self.multi_depths_sm.keys():
+            #if self.multi_depths_sm[d]['sm_val'] !
             SM_statistics[d] = {'mean': self.multi_depths_sm[d]['sm_val'].mean(),
                                 'std': self.multi_depths_sm[d]['sm_val'].std(),
                                'max': self.multi_depths_sm[d]['sm_val'].max(),
                                'min': self.multi_depths_sm[d]['sm_val'].min()}
+                
         self.SM_statistics = SM_statistics
 
     def find_sm_anomalies(self, debug=False):

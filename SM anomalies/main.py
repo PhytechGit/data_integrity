@@ -45,9 +45,6 @@ def get_projects(start_date):
         AND start_date >= CAST((CAST('{start_date}' AS timestamp)) AS date)
         ORDER BY project_id
         """
-    # sql_importer = SqlImporter(
-    #                    query,
-    #                    conn_str=c.full_url_production_java)
     sql_importer = SqlImporter(query=query, database=c.database_production, user=c.user_production,
                                password=c.password_production,
                                host=c.host_production, port=c.port_production, verbose=False)
@@ -66,9 +63,10 @@ failed_list = []
 
 projects_list = get_projects(start_date)
 #print(projects_list)
-for p_id in projects_list['project_id']:
-    #if p_id != 852193:
-       #continue
+project_list = [852093, 871812, 858363]
+for p_id in projects_list: #['project_id']:
+    #if p_id != 857554:
+     #   continue
     try:
         project_data = functions.load_project_data(project_id=p_id, min_date=start_date,
                                                    max_date=yesterday, min_depth=10, max_depth=91, debug=False)
@@ -89,7 +87,8 @@ for p_id in projects_list['project_id']:
 summary_df['percent_not responding'] = summary_df.apply(lambda row: (row.not_responding_events_count / row.irrigation_events) if row.irrigation_events>0 else 0, axis=1)
 ts = dt.datetime.now().strftime("%Y_%m_%d %H-%M-%S")
 
-summary_df.to_csv(DATA_WD + f"/projects_df_{ts}.csv")
+#summary_df.to_csv(DATA_WD + f"/projects_df_{ts}.csv")
 print(failed_list)
-print(tabulate(summary_df, headers='keys'))
+#print(tabulate(summary_df, headers='keys'))
+print(functions.find_projects_with_faulty_sensors(summary_df))
 
