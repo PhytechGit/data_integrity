@@ -110,9 +110,7 @@ def find_not_responding_events(project_data, debug=False):
                     print(df_irr_wide_span, 'probeMaxSM: ',ProbeMaxSM)
                 
                 probe_dict = not_responding_logic(df_irr_wide_span, probe_dict, event_timestamp, project_remarks, sm_hourly_diff, probe_depth, current_event_start, current_event_end, probeMaxDiff, ProbeMaxSM)
-                  
-                #probe_dict['irrigation_events'] = len(df_irr)
-                #probe_dict['events dates'] = probe_events_list
+
                 probe_dict['probe_SM_diff'] = probeMaxDiff
                 probe_events_dict[probe_depth] = probe_dict
  
@@ -150,7 +148,7 @@ def get_project_results(project_data, debug=False):
 
     projects_df = pd.DataFrame(columns=['project_id','sensor_id','area_id','area_name','company_name','crop_name','variety_id',
                                         'probe_depths', 'irrigation_events',
-                                        'not_responding_events_count', 'max_SM_diff',
+                                        'not_responding_events_count', 'max_SM_diff_in_events',
                                         'SM_statistics',
                                         'event_timestamp',
                                        'support_status', 'support_updated_at','days_since_task_complete',
@@ -175,14 +173,14 @@ def get_project_results(project_data, debug=False):
     
     # No not_responding events found
     if not project_results['events_details']: # empty dict = No events
-        project_dict.update({'max_SM_diff': None,
+        project_dict.update({'max_SM_diff_in_events': None,
                              #'max_SM_diff_extended': None,
                              'event_timestamp' : None,
                              'remarks' : None})
     else:
         # find probe with max not responding events
         for d in project_results.get('probe_depths'): 
-            project_dict.update({'max_SM_diff': max(d['probe_SM_diff'] for d in project_results['events_details'].values()),
+            project_dict.update({'max_SM_diff_in_events': max(d['probe_SM_diff'] for d in project_results['events_details'].values()),
                                  #'max_SM_diff_extended': max(d['probe_SM_max_diff_extended_period'] for d in project_results['events_details'].values()),
                                  'SM_statistics': project_data.SM_statistics,
                                  'event_timestamp' : project_results.get('event_timestamp'),
@@ -332,13 +330,3 @@ def find_not_responding_events_old(project_data, debug=False):
                                                            'event_timestamp': event_timestamp,
                                                            'events_details': probe_events_dict})
     return (not_responding_SM_sensors_project_dict)
-
-#############
-# define filtering logic for selecting faulty sensors
-#
-#
-def find_projects_with_faulty_sensors(df):
-    failed_sensors_list = []
-    filtered_df = df[(df['percent_not responding'] > 0.9) & (df.max_SM_diff < 0.5)]
-    failed_sensors_list = list(filtered_df.sensor_id.values)
-    return(failed_sensors_list)

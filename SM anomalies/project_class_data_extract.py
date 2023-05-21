@@ -262,7 +262,9 @@ class Project:
             SM_statistics[d] = {'mean': self.multi_depths_sm[d]['sm_val'].mean(),
                                 'std': self.multi_depths_sm[d]['sm_val'].std(),
                                'max': self.multi_depths_sm[d]['sm_val'].max(),
-                               'min': self.multi_depths_sm[d]['sm_val'].min()}
+                               'min': self.multi_depths_sm[d]['sm_val'].min(),
+                               'max_diff': self.multi_depths_sm[d]['sm_val'].max() - self.multi_depths_sm[d]['sm_val'].min(),
+                               'max_hourly_diff': self.multi_depths_sm[d]['sm_diff'].max()}
                 
         self.SM_statistics = SM_statistics
 
