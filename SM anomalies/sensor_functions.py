@@ -7,8 +7,6 @@ def not_responding_logic(df_irr_span, probe_dict, event_timestamp, project_remar
                 
     df_irr_span_short = df_irr_span[df_irr_span.local_time < current_event_end + pd.Timedelta(hours=logic_parameters.IRR_SPAN_END_AFTER_X_HOURS)]
     
-    #ProbeMinSM, ProbeMaxSM = min(df_irr_span.sm_val), max(df_irr_span.sm_val)
-    #ProbeMaxDiff = ProbeMaxSM - ProbeMinSM
     #################################
     # Not responding conditions:
     #
@@ -38,14 +36,14 @@ def not_responding_logic(df_irr_span, probe_dict, event_timestamp, project_remar
             event_timestamp.add(current_event_start)
             project_remarks.add(f"{current_event_start}: probe {probe_depth} Not responding to irrigation")
     elif (max(df_irr_span_short.sm_diff) <= sm_hourly_diff) and (probeMaxDiff > 1.0):
-        probe_dict['late_reponse'] = True
+        probe_dict['late_response'] = True
         project_remarks.add(f"{current_event_start}: probe {probe_depth} Late response")
     #else:
         # DO Not count as not responding event
 
     return(probe_dict)
 
-def find_not_responding_events(project_data, debug=False):
+def find_not_responding_events(project_data, debug=logic_parameters.debug_):
     # initialize
     not_responding_SM_sensors_project_dict,probe_events_dict = {},{}
     event_timestamp = set()
@@ -59,7 +57,6 @@ def find_not_responding_events(project_data, debug=False):
         
     df_irr = project_data.df_irrigation[project_data.df_irrigation.amount > logic_parameters.MIN_IRR_AMOUNT]
     # get SM by depth series mean and std
-    
     
     for irr_event_counter,row in df_irr.iterrows():
         current_event_start = df_irr.start[irr_event_counter]
@@ -78,6 +75,7 @@ def find_not_responding_events(project_data, debug=False):
                 probe_dict = {'not_responding': False,
                               'low_reponse': False,
                               'late_response': False,
+                              'missing_data': False,
                               'events dates': [],
                               'probe_SM_diff': 0
                              }
@@ -88,6 +86,8 @@ def find_not_responding_events(project_data, debug=False):
                 
                 if project_data.multi_depths_sm[probe_depth].empty: # no SM data for this depth
                     project_remarks.add(f"missing SM data for {probe_depth}")
+                    probe_dict['missing_data'] = True
+                    project_data.missing_data = True
                     probe_events_dict[probe_depth] = probe_dict
                     continue # check next depth
 
@@ -100,11 +100,22 @@ def find_not_responding_events(project_data, debug=False):
                 df_irr_wide_span = df[(df.local_time >= current_event_start - pd.Timedelta(hours=2)) 
                                  & (df.local_time < current_event_end + pd.Timedelta(hours=3* logic_parameters.IRR_SPAN_END_AFTER_X_HOURS))
                                 ].reset_index(drop=True)
+
+                # missing data: 
+                # No SM values in irrigation event or less than 95% of SM hourly values per week
+                max_len_of_SM_hourly_values = ((dt.datetime.strptime(project_data.max_date,"%Y-%m-%d").date().day - dt.datetime.strptime(project_data.min_date,"%Y-%m-%d").date().day) + 1) * 24
+                max_len_of_SM_hourly_values = (project_data.return_project_period()+1) * 24
                 
+                if (len(df_irr_wide_span.sm_val) == 0) or (len(df) < logic_parameters.MIN_PCT_OF_SM_HOURLY_VALUES * max_len_of_SM_hourly_values):
+                    project_remarks.add(f"missing SM data for {probe_depth}")
+                    probe_dict['missing_data'] = True
+                    project_data.missing_data = True
+                    probe_events_dict[probe_depth] = probe_dict
+                    continue
+                    
                 sm_hourly_diff = logic_parameters.SM_HOURLY_DIFF_FIRST_DEPTH if probe_depth_index==0 else logic_parameters.SM_HOURLY_DIFF_SECOND_DEPTH
                 ProbeMinSM, ProbeMaxSM = min(df_irr_wide_span.sm_val), max(df_irr_wide_span.sm_val)
                 probeMaxDiff = ProbeMaxSM - ProbeMinSM
-                #probeMaxSM = project_data.SM_statistics[probe_depth]['max']
                 
                 if debug:
                     print(df_irr_wide_span, 'probeMaxSM: ',ProbeMaxSM)
@@ -125,10 +136,21 @@ def find_not_responding_events(project_data, debug=False):
             not_responding = True
             for d in probe_depths:
                 not_responding *= probe_events_dict[d]['not_responding']
-
             if not_responding:
                 total+=1
-
+            #TODO
+            # skip these steps and use project_data.missing_data flag
+            missing_data,late_response, low_response = False, False, False
+            for d in probe_depths:
+                missing_data += probe_events_dict[d]['missing_data']
+                late_response += probe_events_dict[d]['late_response']
+                #low_response += probe_events_dict[d]['low_response']
+            missing_data = project_data.missing_data
+            if late_response:
+                probe_events_dict['late_response'] = True
+            if low_response:
+                probe_events_dict['low_response'] = True
+            
             if debug:
                 print(f"""total: {total} ,{current_event_start} finished\n######################""")
             not_responding_SM_sensors_project_dict.update({'probe_depths': list(probe_depths),
@@ -142,107 +164,8 @@ def find_not_responding_events(project_data, debug=False):
     return(not_responding_SM_sensors_project_dict)
 
 
-def get_project_results(project_data, debug=False):
-    project_results = find_not_responding_events(project_data,debug)
-    df_irr = project_data.df_irrigation[project_data.df_irrigation.amount > logic_parameters.MIN_IRR_AMOUNT]
-
-    projects_df = pd.DataFrame(columns=['project_id','sensor_id','area_id','area_name','company_name','crop_name','variety_id',
-                                        'probe_depths', 'irrigation_events',
-                                        'not_responding_events_count', 'max_SM_diff_in_events',
-                                        'SM_statistics',
-                                        'event_timestamp',
-                                       'support_status', 'support_updated_at','days_since_task_complete',
-                                        'remarks', 'link','timezone'])
-    project_dict = {}
-
-    remarks = set()
-    
-    project_dict.update({'project_id' : project_data.project_id,
-                         'sensor_id' : project_data.sensor_id,
-                         'area_id' : project_data.area_id,
-                         'area_name' : project_data.area_name,
-                         'company_name' : project_data.company,
-                         'territory' : project_data.territory,
-                         'crop_name' : project_data.crop_name,
-                         'variety_id' : project_data.variety_id,
-                         'probe_depths': project_results.get('probe_depths'),
-                         'irrigation_events' : len(df_irr),
-                         'not_responding_events_count' : project_results['events_count'],
-                         'link' : project_data.app_link,
-                         'timezone' : project_data['timezone']})
-    
-    # No not_responding events found
-    if not project_results['events_details']: # empty dict = No events
-        project_dict.update({'max_SM_diff_in_events': None,
-                             #'max_SM_diff_extended': None,
-                             'event_timestamp' : None,
-                             'remarks' : None})
-    else:
-        # find probe with max not responding events
-        for d in project_results.get('probe_depths'): 
-            project_dict.update({'max_SM_diff_in_events': max(d['probe_SM_diff'] for d in project_results['events_details'].values()),
-                                 #'max_SM_diff_extended': max(d['probe_SM_max_diff_extended_period'] for d in project_results['events_details'].values()),
-                                 'SM_statistics': project_data.SM_statistics,
-                                 'event_timestamp' : project_results.get('event_timestamp'),
-                                'remarks': project_results['remarks']})
-    # Find support status information
-    if not project_data.sensor_support_status:
-        sensor_status = {'status': None, 'updated_at': None, 'days_since_task_complete': None}
-    else:
-        sensor_status = project_data.sensor_support_status_dict[0]
-        sensor_status['days_since_task_complete'] = (dt.datetime.today().date() -
-                                    sensor_status['updated_at'].date()).days
-    
-    project_dict.update({'support_status' : sensor_status['status'],
-                         'support_updated_at' : sensor_status['updated_at'],
-                         'days_since_task_complete': sensor_status['days_since_task_complete']})
-    
-    
-    projects_df = pd.concat([projects_df, pd.DataFrame.from_dict(project_dict,orient='index').T], ignore_index=True)
-    #projects_df['days_since_task_complete'] =  (dt.datetime.today().date() - projects_df['support_updated_at'][0].date()).days
-    #cols = ['project_id', 'sensor_id', 'probe_depths', 'irrigation_events',
-    #   'not_responding_events_count', 'max_SM_diff', 'event_timestamp',
-    #   'support_status', 'support_updated_at','days_since_task_complete', 'remarks', 'link', 'timezone']
-    #projects_df = projects_df[cols]
-    return(projects_df)
-
-def load_project_data(project_id, min_date, max_date, min_depth=10, max_depth=91, debug=True):
-    from logic_parameters import default_latitude, default_height, default_max_depth
-    from project_class_data_extract import Project
-    project = Project(
-        project_id=project_id,
-        min_depth=min_depth,
-        max_depth=default_max_depth,  # set the depth range we're interested in
-        min_date=min_date,
-        max_date=max_date,
-        debug=debug)
-
-    project.load_project_metadata()
-    project.get_sm_depths()
-
-    if len(project.depths_found) == 0:
-        project.valid_project = False
-        return project
-
-    project.load_sm_project_data(min_depth=project.depths_found[0], max_depth=project.depths_found[
-        -1], )  # change the min/max_depth if you dont want to load all depths
-    if not project.valid_project:
-        return project
-    # project.load_project_weather_data(future=14)  # load the weather date until max_date + 14 days.
-    project.apply_transformers()
-    project.group_data_to_depths()
-    project.load_irrigation_spans()
-    project.find_probe_local_saturation()
-    project.SM_statistics_by_probe()
-    project.sensor_support_status_dict = project.get_sensor_support_status()
-    
-    project.meta_data = {'project_id': project.project_id,
-                         'latitude': project.latitude if project.latitude else default_latitude,
-                         'height': project.height if project.height else default_height, 'app_link': project.app_link}
-    
-    return project
-
-def find_not_responding_events_old(project_data, debug=False):
+##################################
+def find_not_responding_events_old(project_data, debug=logic_parameters.debug_):
     not_responding_SM_sensors_project_dict, probe_events_dict = {}, {}
     event_timestamp = set()
     probe_depths = project_data.df_sm_data.depth_cm.unique()
