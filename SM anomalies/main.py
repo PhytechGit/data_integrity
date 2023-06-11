@@ -45,7 +45,7 @@ def main():
     #projects_list = pd.DataFrame(columns = ['project_id'], data=[852093, 871812, 858363])
     counter = 0
     for p_id in tqdm(projects_list['project_id']):
-        if p_id not in [877954]: #, 871812, 858363]:
+        if p_id not in [850514]: #, 871812, 858363]:
             continue
         try:
             project_data = project_functions.load_project_data(project_id=p_id, min_date=start_date,

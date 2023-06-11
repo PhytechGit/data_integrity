@@ -163,6 +163,11 @@ def find_not_responding_events(project_data, debug=logic_parameters.debug_):
 
     return(not_responding_SM_sensors_project_dict)
 
+    def find_events_without_irrigation(project_data):
+        if project_data.sm_diff.any() > logic_parameters.SM_HOURLY_DIFF_FIRST_DEPTH:
+            return(True)
+        else:
+            return(False)
 
 ##################################
 def find_not_responding_events_old(project_data, debug=logic_parameters.debug_):

@@ -53,6 +53,7 @@ class Project:
 
         self.missing_data = False
         self.sensor_support_status = False
+        self.sensor_support_status_dict = {}
         self.df_sm_data_raw = pd.DataFrame([])
         self.df_sm_data = pd.DataFrame([])
         self.local_saturation_by_depth = []
@@ -215,7 +216,7 @@ class Project:
         if len(self.depths_found) == 0:
             self.valid_project = False
             if local_env:
-                print(f"pid {self.project_id}::no depths found")
+                print(f"pid {self.project_id}::{_func_}::no depths found")
             else:
                 logging.info(f"pid {self.project_id}::no depths found")
             raise Exception('no depths found')
@@ -229,6 +230,9 @@ class Project:
         # get the sm data of a single project
         # keep only  depths <= max_depth
         # query the cached_projects_sm_data if available
+        _func_ = "load_sm_project_data"
+        if self.debug:
+            print(f"{_func_} started")
 
         query = f"""
                 SELECT 
@@ -333,7 +337,7 @@ class Project:
             timezone('{self.timezone}', to_timestamp(end_ts / 1000)) end_lt,
             irrigation_system_type system_type
             FROM {DB_TABLES['project_irrigation_spans']} pis
-            JOIN  {DB_TABLES['projects_hierachy']} ph
+            LEFT JOIN  {DB_TABLES['projects_hierachy']} ph
             ON pis.project_id = ph.project_id
             WHERE ((pis.project_id = {self.project_id}) OR 
                     (pis.project_id = (SELECT project_id from projects_hierachy
@@ -350,7 +354,7 @@ class Project:
         sql_importer = sql_importer = SqlImporter(query=query, database=c.database_production, user=c.user_production, password=c.password_production, host=c.host_production, port=c.port_production, verbose=logic_parameters.sql_debug)
         sql_importer.get_data()
         
-        self.df_irrigation = sql_importer.data.copy().dropna()
+        self.df_irrigation = sql_importer.data.copy().dropna(how='all')
         self.df_irrigation.rename(columns={'start_lt': 'start', 'end_lt': 'end'}, inplace=True)
 
     def find_probe_local_saturation(self):
@@ -374,16 +378,18 @@ class Project:
                                'min': self.multi_depths_sm[d]['sm_val'].min(),
                                'max_diff': self.multi_depths_sm[d]['sm_val'].max() - self.multi_depths_sm[d]['sm_val'].min(),
                                'max_hourly_diff': self.multi_depths_sm[d]['sm_diff'].max(),
-                               'trend': self.probe_SM_trend(depth=d)
+                               'trend': self.probe_SM_trend()
                                }
+
         self.SM_statistics = SM_statistics
+        #if self.debug:
+        #    print(self.SM_statistics)
 
     def get_sensor_daily_status(self):
         _func_ = "get_sensor_daily_status"
         if self.debug:
             print(f"{_func_} started")
 
-        # SOIL_TREND_7
         query = f"""
                 select date,statuses from public.sensor_calculations_v2
                 where sensor_id = {self.sensor_id}
@@ -417,18 +423,17 @@ class Project:
         sql_importer = SqlImporter(query=query, database=c.database_ruby_production, user=c.user_production, password=c.password_production, host=c.host_production, port=c.port_production, verbose=logic_parameters.sql_debug)
 
         sql_importer.get_data()
-        sensor_support_status_dict = sql_importer.data.to_dict('records')
-        if not sensor_support_status_dict:
+        if not sql_importer.data.empty:
+            self.sensor_support_status_dict = sql_importer.data.to_dict('records')[0]
+            self.sensor_support_status_dict['days_since_task_complete'] = (dt.datetime.today().date() -
+                                    self.sensor_support_status_dict['updated_at'].date()).days
+            self.sensor_support_status = True
+        #if not self.sensor_support_status_dict:
+        else:
             self.flag += '|empty SM support status'
+            self.sensor_support_status_dict = ({'status': '', 'updated_at': (dt.date.today()).strftime("%Y-%m-%d"), 'work_type': '', 'days_since_task_complete': -99})
             if self.debug:
                 print(f"{self.sensor_id}::empty WOLI table")
-            return({'status': '', 'updated_at': (dt.date.today()).strftime("%Y-%m-%d"),
-                         'work_type': '', 'days_since_task_complete': -99})
-        
-        sensor_support_status_dict['days_since_task_complete'] = (dt.datetime.today().date() -
-                                    sensor_support_status_dict['updated_at'].date()).days
-        self.sensor_support_status = True
-        return(sensor_support_status_dict)
 
     def display_app_link(self, env='app'):
         display(HTML("""<a href="%s">%s</a>"""  %(self.app_link, self.app_link)))
@@ -445,13 +450,38 @@ class Project:
 
                             
     # return linear coefficient of SM values over time
-    def probe_SM_trend(self, depth):
+    def probe_SM_trend(self):
         _func_ = "probe_SM_trend"
         if self.debug:
             print(f"{_func_} started")
+            
+        query=f"""
+            select other_calculations from public.project_calculations_v2
+            where project_id = {self.project_id}
+            and date = '{self.max_date}'
+            """
+        if logic_parameters.sql_debug:
+            print(query)
+        sql_importer = SqlImporter(query=query, database=c.database_production, user=c.user_production, password=c.password_production,host=c.host_production, port=c.port_production, verbose=logic_parameters.sql_debug)
         
+        sql_importer.get_data()
+        data = sql_importer.data
+        sm_7d_trend = -99
+        try:
+            for d in data['other_calculations'][0]:
+                if d['type'] == 'SOIL_TREND_7':
+                    sm_7d_trend = (d['value'])
+                    break
+        except Exception as e:
+            if local_env:
+                print(f'pid {self.project_id}::{_func_}::{e}')
+            else:
+                logging.info(f'pid {self.project_id}::{e}')
+
+        return(sm_7d_trend)
+        """
         x = self.df_sm_data[self.df_sm_data.depth_cm==depth].local_time.apply(date2num)
-        y = self.df_sm_data[self.df_sm_data.depth_cm==depth].sm_val.rolling(3).mean()
+        y = self.df_sm_data[self.df_sm_data.depth_cm==depth].sm_val#.rolling(3).mean()
         if not self.missing_data:
             try:
                 z = np.polyfit(x,y,1,full=False)
@@ -464,6 +494,7 @@ class Project:
             return(z[0])
         else:
             return('NA')
+        """
 
     #def find_sm_anomalies(self, debug=self.debug):
     #    pass
@@ -541,5 +572,53 @@ class Project:
                 x=preds.index, y=preds[0].values, opacity=1, name='prediction', hovertemplate="%{x|%Y/%m/%d %H:%M:%S} value: %{y}"), row=1, col=1, )
 
         fig.show()
+
+    def filter_irrigation_events_from_df(self, debug=logic_parameters.debug_):
+        _func_ = "filter_irrigation_events_from_df"
+        if self.debug:
+            print(f"{_func_} started")
+
+        df_irr = self.df_irrigation[self.df_irrigation.amount > logic_parameters.MIN_IRR_AMOUNT]
+        sm_df = pd.concat({k: pd.DataFrame(v) for k, v in self.multi_depths_sm.items()}, axis=0)
+        sm_df.reset_index(drop=False,inplace=True)
+        sm_df.rename(columns={'level_0': 'depth'}, inplace=True)
+
+        for irr_event_counter,row in df_irr.iterrows():
+            current_event_start = df_irr.start[irr_event_counter].round('60min')
+            current_event_end = df_irr.end[irr_event_counter].round('60min')
+
+            sm_df = sm_df[(sm_df.local_time < current_event_start) | (sm_df.local_time > current_event_end)] 
+
+            if debug:
+                print(f"irrigation event: {row}")
+
+        sm_df['date'] = sm_df.local_time.apply(lambda x: x.date())
+        self.sm_without_irr_df = sm_df
+
+    def remove_rain_days(self):
+        _func_ = "remove_rain_days"
+        if self.debug:
+            print(f"{_func_} started")
+            
+        rain_df = self.find_rain_days()
+
+        df = self.sm_without_irr_df.merge(rain_df, on='date')
+        df = df[df.rain_tag == 'NORMAL']
+        self.sm_without_irr_df = df[['date','local_time','depth','sm_val','sm_diff']]
+        
+        
+    def find_rain_days(self):
+        query=f"""
+            select "date",rain_tag from public.project_calculations_v2
+            where project_id = {self.project_id}
+            and date >= '{self.min_date}'
+            """
+        if logic_parameters.sql_debug:
+            print(query)
+        sql_importer = SqlImporter(query=query, database=c.database_production, user=c.user_production, password=c.password_production,host=c.host_production, port=c.port_production, verbose=logic_parameters.sql_debug)
+        
+        sql_importer.get_data()
+        df = sql_importer.data
+        return(df)
 
         

@@ -20,6 +20,6 @@ MIN_PCT_OF_SM_HOURLY_VALUES = 0.70
 
 #SCORE
 MIN_SM_DIFF = 5
-
-debug_ = True
+###
+debug_ = False
 sql_debug = False
