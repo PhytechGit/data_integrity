@@ -6,4 +6,4 @@
 *.xml
 *.log
 *.ipynb
-*.ipynb
+SM anomalies/env/*

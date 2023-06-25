@@ -8,6 +8,8 @@ import datetime as dt
 #from tabulate import tabulate
 
 warnings.filterwarnings('ignore')
+import common_db
+"""
 try:
     from sql_import_export import SqlImporter
     import cert_aws as c
@@ -27,3 +29,4 @@ except ModuleNotFoundError:
 
 sql_importer = SqlImporter(query='', conn_str=c.full_url_research)
 sql_importer.get_data()
+"""
