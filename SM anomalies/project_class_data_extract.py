@@ -14,13 +14,8 @@ import common_db
 import logic_parameters
 from common_db import DB_TABLES, ALLOWED_SM_TYPES
 from sql_import_export import SqlImporter
+from sensor_functions import status_compare
 
-"""
-try:
-    import cert as c
-except Exception:
-    import cert_aws as c
-"""
 debug_ = logic_parameters.debug_
 
 try:
@@ -129,7 +124,7 @@ class Project:
                 logging.info(f"pid {self.project_id}::no metadata found")
             """
             self.flag += 'no metadata found'
-            raise RuntimeError (f"pid {self.project_id}::no metadata found")
+            raise Exception (f"pid {self.project_id}::no metadata found")
 
         self.timezone = self.project_metadata.time_zone.iloc[0]
         if self.debug:
@@ -253,7 +248,7 @@ class Project:
             else:
                 print(f"pid {self.project_id}::{_func_}::no depths found")
             """
-            raise RuntimeError (f"pid {self.project_id}::{_func_}::no depths found")
+            raise Exception (f"pid {self.project_id}::{_func_}::no depths found")
         # duplicate the single depth found for compliance with load_sm_project_data function syntax
         elif len(self.depths_found) == 1: 
             self.depths_found_index.append(self.depths_found_index[0])
@@ -307,7 +302,7 @@ class Project:
             if self.debug:
                 print('empty SM table')
             """
-            raise RuntimeError(f"pid {self.project_id}::empty SM data")
+            raise Exception(f"pid {self.project_id}::empty SM data")
 
         else:
             self.sensor_id = self.df_sm_data_raw.sensor_id[0]
@@ -403,22 +398,28 @@ class Project:
         sql_importer.get_data()
         
         self.df_irrigation = sql_importer.data.copy().dropna(how='all')
-        self.df_irrigation = self.df_irrigation.rename(columns={'start_lt': 'start', 'end_lt': 'end'}).sort_values(by='start').reset_index(drop=True)
-
-        self.df_irrigation = self.group_irr_events()
+        if not self.df_irrigation.empty:
+            self.df_irrigation = self.df_irrigation.rename(columns={'start_lt': 'start', 'end_lt': 'end'}).sort_values(by='start').reset_index(drop=True)
+            try:
+                self.df_irrigation = self.group_irr_events()
+            except:
+                pass
 
     def group_irr_events(self):
         df_ = self.df_irrigation[self.df_irrigation['system_type'].isin(
             logic_parameters.system_types_to_consider)]
+
         df_['time_diff_hours'] =  (df_.start.shift(-1) 
                                    - df_.end).dt.total_seconds().apply(lambda x:
                                                             divmod(x, 3600)[0]).shift(1,fill_value=0)
 
         df_['grp'] = 0
         s = df_['time_diff_hours']
-        idx=s[s.diff() > logic_parameters.MIN_HR_DIFF_BETWEEN_IRR_EVENTS].index.tolist()
+        idx=s[s > logic_parameters.MIN_HR_DIFF_BETWEEN_IRR_EVENTS].index.tolist()
         grp = 0
         for i in range(len(s)):
+            if i == 0:
+                df_.loc[i,'grp'] = grp
             if i not in idx:
                 df_.loc[i,'grp'] = grp
             else:
@@ -458,6 +459,7 @@ class Project:
                                }
 
         self.SM_statistics = SM_statistics
+        
         #if self.debug:
         #    print(self.SM_statistics)
 
@@ -480,8 +482,10 @@ class Project:
         df  = sql_importer.data
         df.rename(columns={'statuses':'fail_reason'}, inplace=True)
         
-        #df['daily_status'] = df.fail_reason.apply(lambda x: 'FAIL' if x != ['TECHNICAL_OK'] else 'OK')
         df['daily_status'] = df.fail_reason.dropna().apply(lambda x: 'FAIL' if 'TECHNICAL_OK' not in x else 'OK')
+    
+        self.df_fault_days = df.groupby('date').apply(status_compare).reset_index(drop=False).rename(columns={0:'faulty_sensors'})
+
         self.df_daily_status = df
 
     def get_sensor_support_status(self, sql_importer):
@@ -555,7 +559,7 @@ class Project:
                     z = np.polyfit(x,y,1,full=False)
                     sm_7d_trend = z[0]
         except Exception as e:
-                raise RuntimeError(f'pid {self.project_id}::depth {depth} {e}')
+                raise Exception(f'pid {self.project_id}::depth {depth}::{_func_}= {e}')
         finally:
             if sm_7d_trend == -99: # check if max sm value is before min value -> negative trend
                 if self.multi_depths_sm[16]['sm_val'].idxmax() < self.multi_depths_sm[16]['sm_val'].idxmin():

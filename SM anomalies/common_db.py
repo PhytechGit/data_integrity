@@ -7,7 +7,7 @@ try:
     os.environ['ENV_NAME'] = Variable.get('ENV_NAME')
 except: 
     os.environ['ENV_NAME'] = ENV_NAME
-print(f"os.environ ENV_NAME = {os.environ['ENV_NAME']}")
+print(f"ENV_NAME = {os.environ['ENV_NAME']}")
 
 DB_TABLES = {
     'projects_metadata_table': 'projects_metadata',
@@ -33,7 +33,10 @@ if os.environ['ENV_NAME'] == 'local_env':
     CERT_PATH = PHYTECH_DRIVE_PATH + '/Data'
     if CERT_PATH not in sys.path:
         sys.path.append(CERT_PATH)
-    import cert_aws as c
+    try:
+        import cert_aws as c
+    except:
+        print('fail import cert_aws')
 
 elif os.environ['ENV_NAME'] == 'reslab':
     CERT_PATH = '/opt/hubshare/reslab/shared/micro_services/'
@@ -49,7 +52,7 @@ elif os.environ['ENV_NAME'] == 'reslab':
 
 elif os.environ['ENV_NAME'] == 'mwaa-prod':
     import pandas as pd
-    c = pd.Series(index=['full_url_production_java','full_url_production_ruby','full_url_dev','full_url_research'],
+    c = pd.Series(index=['DATABASE_URL_production','DATABASE_URL_production_ruby','DATABASE_URL_dev','DATABASE_URL_research'],
              data=[Variable.get('DATABASE_URL_PROD'), 
                    Variable.get('DATABASE_URL_PROD').replace('java','ruby'),
                    Variable.get('DATABASE_URL_DEV'),
@@ -62,12 +65,12 @@ else:
     exit()
 
 
-os.environ['DATABASE_URL_PROD'] = c.full_url_production_java
-os.environ['DATABASE_URL_PROD_RUBY'] = c.full_url_production_ruby
-os.environ['DATABASE_URL_DEV'] =  c.full_url_dev
-os.environ['DATABASE_URL_RESEARCH'] = c.full_url_research
+os.environ['DATABASE_URL_PROD'] = c.DATABASE_URL_production
+os.environ['DATABASE_URL_PROD_RUBY'] = c.DATABASE_URL_production_ruby
+os.environ['DATABASE_URL_DEV'] =  c.DATABASE_URL_dev
+os.environ['DATABASE_URL_RESEARCH'] = c.DATABASE_URL_research
 
 os.environ['DATABASE_URL_EXTRACT_JAVA'] = os.environ['DATABASE_URL_PROD']
 os.environ['DATABASE_URL_EXTRACT_RUBY'] = os.environ['DATABASE_URL_PROD_RUBY']
-os.environ['DATABASE_URL_LOAD'] = os.environ['DATABASE_URL_RESEARCH']
+os.environ['DATABASE_URL_LOAD'] = os.environ['DATABASE_URL_DEV']
 

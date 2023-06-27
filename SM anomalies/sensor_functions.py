@@ -54,10 +54,12 @@ def find_not_responding_events(project_data, debug=logic_parameters.debug_):
                                                    'events_count': total,
                                                    'events_details': {},
                                                   'remarks': project_remarks})
-        
     df_irr = project_data.df_irrigation[project_data.df_irrigation.amount > logic_parameters.MIN_IRR_AMOUNT]
     # get SM by depth series mean and std
-    
+    if df_irr.empty:
+        project_remarks.add('No irrigations found')
+        print(project_remarks, not_responding_SM_sensors_project_dict)
+        return(not_responding_SM_sensors_project_dict)
     for irr_event_counter,row in df_irr.iterrows():
         current_event_start = df_irr.start[irr_event_counter]
         current_event_end = df_irr.end[irr_event_counter]
@@ -106,7 +108,7 @@ def find_not_responding_events(project_data, debug=logic_parameters.debug_):
                 # No SM values in irrigation event or less than 70% of SM hourly values per week
                 max_len_of_SM_hourly_values = ((dt.datetime.strptime(project_data.max_date,"%Y-%m-%d").date().day - dt.datetime.strptime(project_data.min_date,"%Y-%m-%d").date().day) + 1) * 24
                 max_len_of_SM_hourly_values = (project_data.return_project_period()+1) * 24
-                
+
                 if (len(df_irr_wide_span.sm_val) == 0) or (len(df) < logic_parameters.MIN_PCT_OF_SM_HOURLY_VALUES * max_len_of_SM_hourly_values):
                     project_remarks.add(f"missing SM data for {probe_depth}")
                     probe_dict['missing_data'] = True
@@ -167,6 +169,11 @@ def find_not_responding_events(project_data, debug=logic_parameters.debug_):
     return(not_responding_SM_sensors_project_dict)
 
 def find_events_without_irrigation(project_data):
+    # First check if df_irrigation is not empty = possible faulty IRG sebsor or wrong attribution
+    event_days, count_events = [],0
+    if project_data.df_irrigation.empty:
+        return(False, count_events, event_days)
+
     event_days = project_data.sm_without_irr_df[project_data.sm_without_irr_df.sm_diff > logic_parameters.SM_HOURLY_DIFF_wo_IRR].date.unique().tolist()
     count_events = len(event_days)
 
@@ -174,5 +181,18 @@ def find_events_without_irrigation(project_data):
         return(False, count_events, [])
     else:
         return(True, count_events, event_days)
+    
+def status_compare(df):
+    df.reset_index(drop=True, inplace=True)
+    if len(df) == 2:
+        if (df.loc[0,'daily_status'] == 'FAIL') & (df.loc[1,'daily_status'] == 'FAIL'):
+            return(2)
+        elif (df.loc[0,'daily_status'] == 'FAIL') | (df.loc[1,'daily_status'] == 'FAIL'):
+            return(1)
+        else:
+            return(0)
+    elif len(df) == 1:
+        if df.loc[0,'daily_status'] == 'FAIL':
+            return(1)
 
 ##################################

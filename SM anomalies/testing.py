@@ -1,7 +1,6 @@
 ## testing
 import datetime as dt
-#from project_functions import aggregate_project_data,load_project_data, project_functions
-#from functions import find_not_responding_events,get_project_results,load_project_data,not_responding_logic
+import common_db
 import logic_parameters
 import project_functions
 
@@ -15,8 +14,8 @@ def test_project_data(p_id, debug=logic_parameters.debug_, sql_debug=logic_param
         if project_data:
             print(project_data.app_link)
 
-            if project_data.valid_project & debug:
-                display(project_data.df_irrigation[project_data.df_irrigation.amount > logic_parameters.MIN_IRR_AMOUNT])
+            #if project_data.valid_project & debug:
+            #    display(project_data.df_irrigation[project_data.df_irrigation.amount > logic_parameters.MIN_IRR_AMOUNT])
             if project_data.valid_project:
                 project_df = project_functions.aggregate_project_data(project_data, debug=debug)
                 if debug:

@@ -3,6 +3,7 @@ default_max_depth = 31
 default_latitude = 30
 default_height = 0
 
+DAYS_PERIOD_TO_FETCH = 14
 MIN_SM_WEEKLY_DIFF = 10
 MIN_SM_SATURATION = 25
 MIN_PROBE_DEPTH_FOR_CALC = 10
@@ -26,7 +27,7 @@ MIN_SM_DIFF = 5
 
 # responding w/o irrigation
 SM_HOURLY_DIFF_wo_IRR = 1
-system_types_to_consider = ['drip', 'sprinkler']
+system_types_to_consider = ['drip', 'sprinkler', 'drip2']
 
 debug_ = False
 sql_debug = False

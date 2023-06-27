@@ -8,14 +8,15 @@ import pandas as pd
 import datetime as dt
 import os
 from logic_parameters import ENV_NAME
-
-
-
 from common_db import DB_TABLES, ALLOWED_SM_TYPES
 import common_db
 
 if os.environ['ENV_NAME'] == 'reslab':
     import logging
+    logging = logging.getLogger(__name__)
+elif os.environ['ENV_NAME'] == 'local_env':
+    import cert_aws as c
+
 import logic_parameters
 from sql_import_export import SqlImporter
 from sensor_functions import find_not_responding_events,find_events_without_irrigation
@@ -53,8 +54,6 @@ def get_projects(start_date):
     return sql_importer.data
 
 def load_project_data(project_id, min_date, max_date, min_depth=10, max_depth=91, debug=False):
-    #from logic_parameters import default_latitude, default_height, default_max_depth
-    #from project_class_data_extract import Project
     _func_ = "load_project_data"
     if debug:
         print(f"{_func_} started")
@@ -191,6 +190,7 @@ def aggregate_project_data(project_data, debug=logic_parameters.debug_):
     cols = ['date', 'project_id', 'sensor_id', 'area_id', 'area_name','company_name', 'territory', 'crop_name', 'variety_id', 'probe_depths','irrigation_events', 'not_responding_events_count', 'event_timestamp','remarks', 'support_status', 'work_type', 'support_updated_at','days_since_task_complete', 'link', 'timezone', 'events_max_diff','max_diff', 'max_hourly_diff', 'percent_not_responding','sensor_status', 'algorithm_score', 'notes']
     """
     project_df['date'] = dt.date.today().strftime("%Y-%m-%d")
+    project_df['date'] = project_data.max_date
     cols = project_df.columns.tolist()
     cols = cols[-1:] + cols[:-1]
     #project_df = project_df.reindex(cols, axis="columns")
@@ -231,25 +231,16 @@ def get_project_results(project_data, debug=logic_parameters.debug_):
 
     if project_data.valid_project:
         project_results = find_not_responding_events(project_data,debug)
-
+            
         #df_irr = project_data.df_irrigation[(project_data.df_irrigation.amount > logic_parameters.MIN_IRR_AMOUNT) | ((project_data.df_irrigation.amount > logic_parameters.MIN_IRR_AMOUNT_SPRINKLER) & (project_data.df_irrigation.system_type == 'sprinkler'))]
         df_irr = project_data.df_irrigation[(project_data.df_irrigation.amount > logic_parameters.MIN_IRR_AMOUNT)]
         project_dict.update({'probe_depths': project_results.get('probe_depths'),
                          'irrigation_events' : len(df_irr),
                          'not_responding_events_count' : project_results['events_count']})
-
-        """projects_df = pd.DataFrame(columns                                 ['project_id','sensor_id','area_id','area_name','company_name','territory','crop_name','variety_id',
-                                        'probe_depths', 'irrigation_events',
-                                        'not_responding_events_count', 'events_max_diff',
-                                        'SM_statistics',
-                                        'event_timestamp',
-                                        'support_status','work_type',
-                                        'support_updated_at','days_since_task_complete',
-                                        'remarks', 'link','timezone'])
-    """
-    
-        # No not_responding events found
-        if project_results['events_details']: # empty dict = No events
+        
+        if ('No irrigations found' not in project_results['remarks']) or (not project_results['events_details']):
+        # check if the project has irrigation events and if there are not_responding events found
+        #if project_results['events_details']: # empty dict = No events
             # find probe with max not responding events
             for depth in project_results.get('probe_depths'): 
                 project_dict.update({'events_max_diff': max(d['probe_SM_diff'] for d in project_results['events_details'].values()),
@@ -281,7 +272,6 @@ def calc_not_responding_algorithm_score(project_df):
     if project_df.max_diff.item() > 0: # positive trend of soil moisture
         score-=10
     #if project_df.max_hourly_diff > ???
-    #if project_df.max_hourly_diff > ???
     return(score)
 
 def calc_responding_wo_irr_algorithm_score(project_df, events):
@@ -296,7 +286,6 @@ def count_fail_technical_days(project_data, debug=logic_parameters.debug_):
     _func_ = "count_fail_technical_days"
     if debug:
         print(f"{_func_} started")
-        print(project_data.df_daily_status)
 
     fail_technicl_days = 0
     if not project_data.df_daily_status.empty:
@@ -316,7 +305,22 @@ def count_fail_technical_days(project_data, debug=logic_parameters.debug_):
 
     return fail_technicl_days, reason
 
+def count_fail_technical_days(project_data, debug=logic_parameters.debug_):
+    _func_ = "count_fail_technical_days"
+    if debug:
+        print(f"{_func_} started")
+        print(project_data.df_daily_status)
+        
+    fail_technicl_days = 0
+    if not project_data.df_fault_days.empty:
+        fail_technicl_days = len(project_data.df_fault_days[project_data.df_fault_days.faulty_sensors==2])
+        reason = project_data.df_daily_status.fail_reason.mode()[0]
+        if fail_technicl_days > logic_parameters.MAX_FAIL_TECHNICAL_DAYS:
+            return fail_technicl_days, reason
+    else:
+        fail_technicl_days , reason = 7, 'NO daily status data'
 
+    return fail_technicl_days, reason
     """
 def get_support_status_information(project_data, project_dict):
         if not project_data.sensor_support_status:
